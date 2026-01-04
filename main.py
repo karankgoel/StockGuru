@@ -1,5 +1,9 @@
 import os
 import sys
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from agent.orchestrator import AdvisorAgent
 
 def main():

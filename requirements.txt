@@ -1,0 +1,15 @@
+google-generativeai
+google-adk
+yfinance
+ta
+fastapi
+uvicorn
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+fastmcp
+ddgs
+
+
+
+

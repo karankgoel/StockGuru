@@ -1,0 +1,6 @@
+print("Importing api.main...")
+try:
+    import api.main
+    print("Import successful.")
+except Exception as e:
+    print(f"Import failed: {e}")

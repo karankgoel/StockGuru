@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Bot | AI-Powered Market Intelligence</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+
+    <!-- Login Modal -->
+    <div id="login-modal" class="modal">
+        <div class="modal-content">
+            <h2>Welcome Back</h2>
+            <p>Access your personalized market dashboard</p>
+            <div id="auth-error" class="error-msg"></div>
+            <input type="text" id="username" placeholder="Username" autocomplete="username">
+            <input type="password" id="password" placeholder="Password" autocomplete="current-password">
+            <div class="auth-buttons">
+                <button onclick="login()" style="flex: 1;">Login</button>
+                <button onclick="register()" class="secondary" style="flex: 1;">Register</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="app" class="hidden">
+        <nav>
+            <div class="logo">
+                <i class="fas fa-brain"></i>
+                Agentic Bot
+            </div>
+            <div class="controls">
+                <select id="country-selector" onchange="updateDashboard()">
+                    <option value="US">🇺🇸 United States</option>
+                    <option value="UK">🇬🇧 United Kingdom</option>
+                    <option value="IN">🇮🇳 India</option>
+                    <option value="JP">🇯🇵 Japan</option>
+                </select>
+                <button onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
+            </div>
+        </nav>
+
+        <div class="container">
+            <!-- Market Overview -->
+            <section class="overview">
+                <h3><i class="fas fa-chart-line"></i> Market Overview</h3>
+                <div id="indexes-grid" class="grid">
+                    <!-- Cards injected by JS -->
+                </div>
+            </section>
+
+            <div class="main-content">
+                <!-- Charts & Watchlist -->
+                <div class="left-panel">
+                    <div class="card chart-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-chart-area"></i> Price Chart</h3>
+                            <select id="chart-symbol" onchange="updateChart()">
+                                <!-- Options injected -->
+                            </select>
+                        </div>
+                        <canvas id="marketChart"></canvas>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-star"></i> Watchlist</h3>
+                        </div>
+                        <div class="add-stock">
+                            <input type="text" id="new-stock" placeholder="Add symbol (e.g., AAPL)">
+                            <button onclick="addToWatchlist()"><i class="fas fa-plus"></i></button>
+                        </div>
+                        <ul id="watchlist-list">
+                            <!-- List items injected -->
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Agent Chat -->
+                <div class="right-panel">
+                    <div class="card chat-card">
+                        <div class="card-header">
+                            <h3><i class="fas fa-robot"></i> AI Advisor</h3>
+                            <span class="status-dot"></span>
+                        </div>
+                        <div id="chat-history" class="chat-history">
+                            <div class="message bot">
+                                <p>👋 Hello! I'm your AI investment advisor. I can help you with:</p>
+                                <p>• Stock analysis and recommendations<br>
+                                    • ETF and fund research<br>
+                                    • Portfolio strategy<br>
+                                    • Market insights</p>
+                                <p>What would you like to know?</p>
+                            </div>
+                        </div>
+                        <div class="chat-input">
+                            <input type="text" id="chat-input" placeholder="Ask about stocks, ETFs, or portfolios..."
+                                onkeypress="handleChat(event)">
+                            <button onclick="sendMessage()"><i class="fas fa-paper-plane"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+
+</html>

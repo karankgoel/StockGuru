@@ -22,9 +22,29 @@ from api.auth import (
     get_current_user
 )
 
-# In-memory DB for demo purposes
-# In production, use SQLite/PostgreSQL
-users_db = {} 
+# In-memory DB for demo purposes (backed by JSON file)
+import json
+import os
+
+USERS_FILE = "users.json"
+
+def load_users():
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, "r") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error loading users: {e}")
+    return {}
+
+def save_users(db):
+    try:
+        with open(USERS_FILE, "w") as f:
+            json.dump(db, f, indent=2)
+    except Exception as e:
+        print(f"Error saving users: {e}")
+
+users_db = load_users()
 watchlist_db = {} # {username: [symbol1, symbol2]}
 
 app = FastAPI()
@@ -55,6 +75,7 @@ async def register(user: UserCreate):
             "username": user.username,
             "password_hash": hashed_password
         }
+        save_users(users_db)
         return {"message": "User created successfully"}
     except HTTPException:
         raise

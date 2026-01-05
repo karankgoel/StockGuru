@@ -5,11 +5,9 @@ from google.adk import Agent
 
 class NewsAnalyst:
     def __init__(self, model="gemini-pro", tools=None):
-        self.agent = Agent(
-            name="news_analyst",
-            model=model,
-            tools=tools or [],
-            instruction="""You are a News Analyst.
+        self.model = model
+        self.tools = tools or []
+        self.instruction = """You are a News Analyst.
             Your goal is to research recent news and gauge market sentiment.
             
             STRICT RULES:
@@ -18,12 +16,17 @@ class NewsAnalyst:
             3. Determine if the sentiment is positive, negative, or neutral based ONLY on the fetched news.
             4. If no recent news is found, state "No recent news found". DO NOT HALLUCINATE news.
             5. Focus on potential impact on the stock price."""
+
+    def _create_agent(self):
+        from google.adk.models import Gemini
+        return Agent(
+            name="news_analyst",
+            model=Gemini(model=self.model),
+            tools=self.tools,
+            instruction=self.instruction
         )
 
     def analyze(self, symbol: str) -> str:
         prompt = f"Get the latest news for {symbol} and summarize the sentiment."
-        try:
-            response = self.agent.run(prompt)
-            return response.text
-        except Exception as e:
-            return f"News Analysis failed: {e}"
+        from agent.utils import run_agent_sync
+        return run_agent_sync(self._create_agent, prompt)

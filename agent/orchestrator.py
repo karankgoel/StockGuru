@@ -2,17 +2,15 @@ from google.adk.runners import InMemoryRunner
 from google.genai.types import Content, Part
 import os
 from google.adk import Agent
-from agent.specialists.technical import TechnicalAnalyst
-from agent.specialists.news import NewsAnalyst
-from agent.specialists.fundamental import FundamentalAnalyst
-from agent.specialists.portfolio import PortfolioAnalyst
+
 from agent.models.factory import get_model
 
+
 # Initialize Model from Factory
-model = get_model()
+# model = get_model()  <-- MOVED INSIDE CLASS
 
 class AdvisorAgent:
-    def __init__(self, model_instance=model):
+    def __init__(self, model_instance=None):
         if "GOOGLE_API_KEY" not in os.environ:
              # Just a warning
             print("Warning: GOOGLE_API_KEY not found in environment variables.")
@@ -20,107 +18,105 @@ class AdvisorAgent:
         # Initialize MCP Client
         from agent.mcp_client import MCPToolAdapter
         import asyncio
+        import threading
         
         # Path to the MCP server
         server_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "servers", "stock_data", "mcp_server.py")
         self.mcp_adapter = MCPToolAdapter(server_path)
         
-        # Start MCP Client and get tools (using a sync wrapper since init is sync)
-        # In a production app, we should manage lifecycle better (e.g. async factory).
-        # For simplicity here, we'll run the start loop briefly or use the adapter lazily.
-        # But we need the tool objects for Agent init.
+        # Start MCP Client on a dedicated background thread/loop
+        # This ensures the loop stays alive for the duration of the agent
+        def start_loop(loop):
+            asyncio.set_event_loop(loop)
+            loop.run_forever()
+
+        self._mcp_loop = asyncio.new_event_loop()
+        self._mcp_thread = threading.Thread(target=start_loop, args=(self._mcp_loop,), daemon=True)
+        self._mcp_thread.start()
         
-        # We'll use a helper to run async startup synchronously
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Start the adapter on the background loop
+        future = asyncio.run_coroutine_threadsafe(self.mcp_adapter.start(), self._mcp_loop)
         try:
-            loop.run_until_complete(self.mcp_adapter.start())
+            future.result(timeout=10) # Wait for startup
         except Exception as e:
             print(f"Failed to start MCP Client: {e}")
             # Fallback or error out? For now, we proceed but tools might be empty/broken.
-        
-        # Get Tool Wrappers
-        # Technical Tools
-        tech_tools = [
-            self.mcp_adapter.get_tool_function("get_stock_history"),
-            self.mcp_adapter.get_tool_function("get_technical_summary")
-        ]
-        
-        # News Tools
-        news_tools = [
-            self.mcp_adapter.get_tool_function("get_stock_news")
-        ]
-        
-        # Fundamental Tools
-        fund_tools = [
-            self.mcp_adapter.get_tool_function("get_stock_profile")
-        ]
-        
-        # Portfolio Tools
-        portfolio_tools = [
-            self.mcp_adapter.get_tool_function("search_web"),
-            self.mcp_adapter.get_tool_function("get_etf_info"),
-            self.mcp_adapter.get_tool_function("get_stock_history")
-        ]
-        
-        # Instantiate specialists with injected tools
-        self.tech_agent = TechnicalAnalyst(model=model_instance, tools=tech_tools)
-        self.news_agent = NewsAnalyst(model=model_instance, tools=news_tools)
-        self.fund_agent = FundamentalAnalyst(model=model_instance, tools=fund_tools)
-        self.portfolio_agent = PortfolioAnalyst(model=model_instance, tools=portfolio_tools) # New
-
-        # Definitions for Orchestrator Tools that wrap the specialists
-        def consult_technical_analyst(symbol: str) -> str:
-            """Gets a tech analysis report."""
-            return self.tech_agent.analyze(symbol)
-
-        def consult_news_analyst(symbol: str) -> str:
-            """Gets a news analysis report."""
-            return self.news_agent.analyze(symbol)
-
-        def consult_fundamental_analyst(symbol: str) -> str:
-            """Gets a fundamental analysis report."""
-            return self.fund_agent.analyze(symbol)
-            
-        def consult_portfolio_analyst(query: str) -> str:
-            """Gets advice on funds, ETFs, portfolio allocation, or investor portfolios."""
-            return self.portfolio_agent.analyze(query)
-
-        self.agent = Agent(
-            name="advisor_agent",
-            model=model_instance,
-            tools=[consult_technical_analyst, consult_news_analyst, consult_fundamental_analyst, consult_portfolio_analyst],
-            instruction="""You are a Senior Investment Advisor (Orchestrator).
-            Your goal is to provide a comprehensive Buy, Sell, or Hold recommendation, OR Portfolio Advice.
-            
-            You have a team of analysts:
-            1. Technical Analyst: Checks charts, indicators, and support/resistance.
-            2. News Analyst: Checks sentiment and headlines.
-            3. Fundamental Analyst: Checks business model and sector.
-            4. Portfolio Analyst: Specializes in Funds, ETFs, and Asset Allocation.
-            
-            STRICT PROCESS:
-            
-            IF User asks for Stock Analysis (e.g. "Analyze AAPL"):
-                1. Consult Technical, News, and Fundamental analysts.
-                2. Synthesize their reports.
-                3. Provide a recommendation (Buy/Sell/Hold) with reasoning, prediction, and risks.
-                
-            IF User asks for Portfolio/Fund Advice (e.g. "Best tech ETFs" or "Warren Buffett portfolio"):
-                1. Consult the Portfolio Analyst.
-                2. Provide a clear answer based on their findings.
-            
-            IMPORTANT:
-            - If an analyst returns "Data Unavailable", state that clearly.
-            - DO NOT make up facts or numbers.
-            - Be decisive but balanced."""
-        )
-
 
     def run(self, user_input):
         try:
+            # Create a fresh model instance for this run
+            # This ensures it binds to the correct event loop if needed
+            model_instance = get_model()
+            # Use the same model for specialists to ensure consistency
+            model_name = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
+
+            # Get Tool Wrappers
+            # Technical Tools
+            tech_tools = [
+                self.mcp_adapter.get_tool_function("get_stock_history"),
+                self.mcp_adapter.get_tool_function("get_technical_summary")
+            ]
+            
+            # News Tools
+            news_tools = [
+                self.mcp_adapter.get_tool_function("get_stock_news")
+            ]
+            
+            # Fundamental Tools
+            fund_tools = [
+                self.mcp_adapter.get_tool_function("get_stock_profile"),
+                self.mcp_adapter.get_tool_function("get_detailed_stock_info")
+            ]
+            
+            # Portfolio Tools
+            portfolio_tools = [
+                self.mcp_adapter.get_tool_function("search_web"),
+                self.mcp_adapter.get_tool_function("get_etf_info"),
+                self.mcp_adapter.get_tool_function("get_stock_history")
+            ]
+            
+            # Get all tools directly for the main agent
+            all_tools = tech_tools + news_tools + fund_tools + portfolio_tools
+
+            agent = Agent(
+                name="advisor_agent",
+                model=model_instance,
+                tools=all_tools,
+                instruction="""You are a Senior Investment Advisor.
+                Your goal is to provide comprehensive Buy, Sell, or Hold recommendations, OR Portfolio Advice.
+                
+                You have access to the following tools:
+                - get_stock_history: Get historical price data for a stock
+                - get_technical_summary: Get technical indicators (RSI, MACD, etc.) for a stock
+                - get_stock_news: Get recent news articles for a stock
+                - get_stock_profile: Get company profile and fundamental data
+                - search_web: Search the web for information
+                - get_etf_info: Get information about ETFs
+                
+                STRICT PROCESS:
+                
+                IF User asks for Stock Analysis (e.g. "Analyze AAPL"):
+                    1. Use get_technical_summary to check technical indicators
+                    2. Use get_stock_news to check recent news and sentiment
+                    3. Use get_stock_profile to check the company fundamentals
+                    4. Synthesize all the data
+                    5. Provide a clear recommendation (Buy/Sell/Hold) with reasoning, price prediction, and risks
+                    
+                IF User asks for Portfolio/Fund Advice (e.g. "Best tech ETFs" or "Warren Buffett portfolio"):
+                    1. Use search_web to find relevant information
+                    2. Use get_etf_info for specific ETF details if needed
+                    3. Use get_stock_history to check performance if needed
+                    4. Provide clear, actionable advice
+                
+                IMPORTANT:
+                - If a tool returns an error or "Data Unavailable", state that clearly
+                - DO NOT make up facts or numbers
+                - Be decisive but balanced
+                - Always pass the stock symbol to tools that require it"""
+            )
+
             # Initialize Runner
-            enhanced_runner = InMemoryRunner(agent=self.agent, app_name="agents")
+            enhanced_runner = InMemoryRunner(agent=agent, app_name="agents")
             
             # Create session (requires async execution)
             import uuid
@@ -142,8 +138,28 @@ class AdvisorAgent:
             response_text = ""
             for event in enhanced_runner.run(user_id="user", session_id=session_id, new_message=message):
                 # Check for ModelResponseEvent which contains the text
-                if hasattr(event, 'response') and event.response and event.response.text:
-                    response_text = event.response.text
+                
+                # Check for ModelResponseEvent which contains the text
+                # Try event.response first (standard ModelResponseEvent)
+                if hasattr(event, 'response') and event.response:
+                    try:
+                        text = event.response.text
+                        if text:
+                            response_text = text
+                    except Exception:
+                        pass
+                
+                # Fallback: Content attribute directly (some event types)
+                elif hasattr(event, 'content') and event.content:
+                     try:
+                        # content is likely a Content object with parts
+                        if hasattr(event.content, 'parts'):
+                            parts = event.content.parts
+                            text_parts = [p.text for p in parts if hasattr(p, 'text') and p.text]
+                            if text_parts:
+                                response_text = "\n".join(text_parts)
+                     except Exception:
+                        pass
                     
             return response_text
         except Exception as e:
